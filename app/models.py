@@ -80,7 +80,15 @@ class SubmissionCreated(BaseModel):
     reasonCode: ReasonCode | None = None
 
 
-class Submission(SubmissionCreated, SubmissionCreate):
+class ForwardInfo(BaseModel):
+    """CR-B: pārsūtīšanas dati. `None`, ja iesniegums nav pārsūtīts."""
+
+    forwardedTo: str | None = None
+    forwardedAt: datetime | None = None
+    forwardedLate: bool | None = None
+
+
+class Submission(SubmissionCreated, SubmissionCreate, ForwardInfo):
     pass
 
 
@@ -100,6 +108,11 @@ class WithdrawRequest(BaseModel):
     reason: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=10, max_length=500)
     ]
+
+
+class ForwardRequest(BaseModel):
+    # CR-B: līgumā nav minLength, tāpēc "" ir nezināma iestāde, ne validācijas kļūda.
+    institutionCode: str
 
 
 class AuditEntry(BaseModel):

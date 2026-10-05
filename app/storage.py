@@ -25,6 +25,9 @@ COLUMNS = (
     "dueDate",
     "replyChannel",
     "reasonCode",
+    "forwardedTo",
+    "forwardedAt",
+    "forwardedLate",
 )
 
 # Sintētiski dati. Personas kodi neatbilst reālām personām.
@@ -142,8 +145,9 @@ INSTITUTIONS = (
 _INSERT = """
     INSERT INTO submissions (
         id, personalCode, fullName, email, preferredChannel, topic, subject, body,
-        status, receivedAt, dueDate, replyChannel, reasonCode
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, receivedAt, dueDate, replyChannel, reasonCode,
+        forwardedTo, forwardedAt, forwardedLate
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _lock = threading.Lock()
@@ -169,7 +173,10 @@ def _connect() -> sqlite3.Connection:
             receivedAt TEXT NOT NULL,
             dueDate TEXT NOT NULL,
             replyChannel TEXT NOT NULL,
-            reasonCode TEXT
+            reasonCode TEXT,
+            forwardedTo TEXT,
+            forwardedAt TEXT,
+            forwardedLate INTEGER  -- 0/1, modelis to pārvērš par bool
         )
         """
     )
@@ -256,6 +263,33 @@ def update_status(
     return get(submission_id)
 
 
+def forward(
+    submission_id: str,
+    institution_code: str,
+    forwarded_at: str,
+    late: bool,
+    allowed_from: tuple[str, ...],
+) -> dict | None:
+    """CR-B: statuss FORWARDED un pārsūtīšanas dati. Atgriež atjaunoto ierakstu
+    vai None, ja ID nav atrasts vai pašreizējais statuss nav starp `allowed_from`.
+
+    Pārbaude un maiņa ir viens vaicājums, tāpat kā `update_status`.
+    """
+    query = (
+        "UPDATE submissions"
+        " SET status = 'FORWARDED', forwardedTo = ?, forwardedAt = ?, forwardedLate = ?"
+        f" WHERE id = ? AND status IN ({', '.join('?' * len(allowed_from))})"
+    )
+    params = [institution_code, forwarded_at, int(late), submission_id, *allowed_from]
+    with _lock:
+        cursor = _conn.execute(query, params)
+    if cursor.rowcount == 0:
+        return None
+    # Žurnālā tikai ID un statuss. Ierakstā ir personas dati.
+    logger.info("Statuss mainīts: %s -> FORWARDED", submission_id)
+    return get(submission_id)
+
+
 def update_due_date(submission_id: str, due_date: str) -> dict:
     """Maina atbildes termiņu (ISO datums). Atgriež atjaunoto ierakstu."""
     with _lock:
@@ -274,7 +308,7 @@ def find_institution(code: str) -> dict | None:
     """Iestāde pēc koda vai None, ja tādas nav."""
     with _lock:
         row = _conn.execute(
-            f"SELECT code, name FROM institutions WHERE code = '{code}'"
+            "SELECT code, name FROM institutions WHERE code = ?", (code,)
         ).fetchone()
     return {"code": row["code"], "name": row["name"]} if row else None
 

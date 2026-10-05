@@ -18,6 +18,10 @@ class InvalidState(Exception):
     pass
 
 
+class UnknownInstitution(Exception):
+    pass
+
+
 def _field(error: dict) -> str:
     # loc piemērs: ("body", "personalCode"). Pirmais elements ir vieta pieprasījumā.
     if error["type"] == "json_invalid":
@@ -59,6 +63,11 @@ def register_error_handlers(app: FastAPI) -> None:
         return error_response(
             409, "INVALID_STATE", "Action not allowed in the current status"
         )
+
+    @app.exception_handler(UnknownInstitution)
+    async def unknown_institution(request: Request, exc: UnknownInstitution):
+        # Ievadīto kodu atbildē neatkārtojam.
+        return error_response(400, "UNKNOWN_INSTITUTION", "Unknown institution")
 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception):
