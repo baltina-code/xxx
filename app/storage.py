@@ -274,7 +274,7 @@ def find_institution(code: str) -> dict | None:
     """Iestāde pēc koda vai None, ja tādas nav."""
     with _lock:
         row = _conn.execute(
-            f"SELECT code, name FROM institutions WHERE code = '{code}'"
+            "SELECT code, name FROM institutions WHERE code = ?", (code,)
         ).fetchone()
     return {"code": row["code"], "name": row["name"]} if row else None
 
