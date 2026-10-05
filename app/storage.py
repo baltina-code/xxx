@@ -233,17 +233,27 @@ def get(submission_id: str) -> dict | None:
     return {column: row[column] for column in COLUMNS}
 
 
-def update_status(submission_id: str, status: str) -> dict | None:
-    """Maina statusu. Atgriež atjaunoto ierakstu vai None, ja ID nav atrasts."""
+def update_status(
+    submission_id: str, status: str, allowed_from: tuple[str, ...] | None = None
+) -> dict | None:
+    """Maina statusu. Atgriež atjaunoto ierakstu vai None, ja ID nav atrasts
+    vai pašreizējais statuss nav starp `allowed_from`.
+
+    Pārbaude un maiņa ir viens vaicājums, lai divi vienlaicīgi pieprasījumi
+    nevarētu abi nomainīt statusu.
+    """
+    query = "UPDATE submissions SET status = ? WHERE id = ?"
+    params: list[str] = [status, submission_id]
+    if allowed_from is not None:
+        query += f" AND status IN ({', '.join('?' * len(allowed_from))})"
+        params.extend(allowed_from)
     with _lock:
-        cursor = _conn.execute(
-            "UPDATE submissions SET status = ? WHERE id = ?", (status, submission_id)
-        )
+        cursor = _conn.execute(query, params)
     if cursor.rowcount == 0:
         return None
-    record = get(submission_id)
-    logger.info("Statuss mainīts: %s", record)
-    return record
+    # Žurnālā tikai ID un statuss. Ierakstā ir personas dati.
+    logger.info("Statuss mainīts: %s -> %s", submission_id, status)
+    return get(submission_id)
 
 
 def update_due_date(submission_id: str, due_date: str) -> dict:
